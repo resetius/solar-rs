@@ -9,3 +9,4 @@ name = "euler"
 path = "src/euler.rs"
 
 [dependencies]
+scanf = "1.2.1"
