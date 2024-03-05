@@ -3,9 +3,33 @@ use glib::clone;
 use gtk::glib;
 use gtk::prelude::*;
 use std::rc::Rc;
+use gtk::gio;
 
-struct Context {
-    name: String
+struct Context<'a> {
+    // controls
+    method_selector: Option<&'a gtk::Widget>,
+    // child process
+    subprocess: Option<gio::Subprocess>,
+    input: Option<gio::InputStream>,
+    cancel_read: Option<gio::Cancellable>,
+    line_input: Option<gio::DataInputStream>,
+    header_processed: bool,
+    suspend: bool
+}
+
+impl<'a> Default for Context<'a> {
+    fn default() -> Context<'a> {
+        Context {
+            method_selector: None,
+            //
+            subprocess: None,
+            input: None,
+            cancel_read: None,
+            line_input: None,
+            header_processed: false,
+            suspend: false
+        }
+    }
 }
 
 fn control_widget(ctx: &Rc<Context>) -> gtk::Widget {
@@ -24,6 +48,7 @@ fn control_widget(ctx: &Rc<Context>) -> gtk::Widget {
     bx.append(&gtk::Label::new(Some("Method:")));
     // TODO: store in ctx
     let method_selector = gtk::DropDown::from_strings(&methods);
+//    ctx.method_selector = Some(clone!(@weak (&method_selector.into())));
     bx.append(&method_selector);
     bx.append(&gtk::Label::new(Some("Input:")));
     let entry = gtk::Entry::new();
@@ -88,7 +113,6 @@ fn right_pane(ctx: &Rc<Context>) -> gtk::Widget {
 
 // When the application is launched…
 fn on_activate(application: &gtk::Application, ctx: &Rc<Context>) {
-    println!("{}", ctx.name);
     let window = gtk::ApplicationWindow::new(application);
     window.set_title(Some("N-Body"));
     window.set_default_size(1024, 768);
@@ -126,7 +150,7 @@ fn on_activate(application: &gtk::Application, ctx: &Rc<Context>) {
 
 fn main() {
     let ctx = Rc::new(Context{
-        name: String::from("ABC")
+        ..Default::default()
     });
 
     gtk::disable_setlocale();
