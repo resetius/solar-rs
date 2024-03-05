@@ -9,4 +9,5 @@ name = "euler"
 path = "src/euler.rs"
 
 [dependencies]
+gtk = { version = "0.8.0", package = "gtk4", features = ["v4_12"] }
 scanf = "1.2.1"
