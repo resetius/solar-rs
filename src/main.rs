@@ -10,12 +10,66 @@ struct Context {
 
 fn control_widget(ctx: &Rc<Context>) -> gtk::Widget {
     let frame = gtk::Frame::new(Some("Controls"));
+    let bx = gtk::Box::new(gtk::Orientation::Vertical, 0);
+
+    frame.set_child(Some(&bx));
+    bx.append(&gtk::Label::new(Some("Preset:")));
+    let presets = ["2 Bodies", "3 Bodies", "Solar", "Saturn"];
+    let preset_selector = gtk::DropDown::from_strings(&presets);
+
+    // TODO: signal
+    bx.append(&preset_selector);
+
+    let methods = ["Euler", "Verlet"];
+    bx.append(&gtk::Label::new(Some("Method:")));
+    // TODO: store in ctx
+    let method_selector = gtk::DropDown::from_strings(&methods);
+    bx.append(&method_selector);
+    bx.append(&gtk::Label::new(Some("Input:")));
+    let entry = gtk::Entry::new();
+    // TODO signal
+    // TODO store buffer
+    // let buffer = entry.get_buffer();
+    // buffer.set_text() // TODO
+    bx.append(&entry);
+    bx.append(&gtk::Label::new(Some("dt:")));
+    // TODO store dt
+    let dt = gtk::SpinButton::with_range(1e-14, 0.1, 0.00001);
+    dt.set_digits(8);
+    // dt.set_value(); // TODO
+    // signal
+    bx.append(&dt);
 
     return frame.into();
 }
 
 fn info_widget(ctx: &Rc<Context>) -> gtk::Widget {
     let frame = gtk::Frame::new(Some("Info"));
+    let bx = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    frame.set_child(Some(&bx));
+
+    let strings = [];
+    // TODO: store body_selector
+    let body_selector = gtk::DropDown::from_strings(&strings);
+    body_selector.set_selected(0);
+    // signal
+
+    bx.append(&body_selector);
+
+    for i in 0..3 {
+        let x = gtk::Label::new(Some("-"));
+        bx.append(&x);
+        // store x
+        x.set_width_chars(30);
+        x.set_use_markup(true);
+    }
+    for i in 0..3 {
+        let vx = gtk::Label::new(Some("-"));
+        bx.append(&vx);
+        // store vx
+        vx.set_width_chars(30);
+        vx.set_use_markup(true);
+    }
 
     return frame.into();
 }
@@ -74,9 +128,11 @@ fn main() {
     let ctx = Rc::new(Context{
         name: String::from("ABC")
     });
-    // Create a new application with the builder pattern
+
+    gtk::disable_setlocale();
+
     let app = gtk::Application::builder()
-        .application_id("com.github.gtk-rs.examples.basic")
+        .application_id("n-bodies")
         .build();
     app.connect_activate(clone!(@weak ctx => move |app| {
         on_activate(&app, &ctx);
