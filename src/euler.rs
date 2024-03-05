@@ -1,6 +1,7 @@
 use std::env;
 use std::io::{BufReader, BufRead};
 use std::fs::File;
+use std::process::exit;
 
 use scanf::sscanf;
 
@@ -48,7 +49,7 @@ fn euler_next(data: &mut Data) {
         data.bodies[i].a = a;
     }
 
-    for i in 0..3 {
+    for i in 0..n {
         let b = &mut data.bodies[i];
 
         for k in 0..3 {
@@ -141,8 +142,69 @@ fn load(data: &mut Data, file_name: &mut String) {
     }
 }
 
-fn run_test() {
+fn kepler(dt: f64) -> f64 {
+    let g = 1.0;
+    let mm = 1e5;
 
+    let bodies = vec![
+        Body {
+            name: String::from("b1"),
+            r : [0.0, 0.0, 0.0],
+            v : [0.0, 0.0, 0.0],
+            a : [0.0, 0.0, 0.0],
+            m : mm,
+            fixed : true
+        },
+        Body {
+            name : String::from("b2"),
+            r : [0.0, 1.0, 0.0],
+            v : [f64::sqrt(g * mm), 0.0, 0.0],
+            a : [0.0, 0.0, 0.0],
+            m : 1.0,
+            fixed : false
+        }
+    ];
+
+    let mut data = Data {
+        bodies : bodies,
+        g : g,
+        dt : dt
+    };
+
+    let mut max_err = 0.0;
+    let max_time = 0.1;
+    let mut t = 0.0;
+
+    while t < max_time {
+        euler_next(&mut data);
+
+        let mut r = 0.0;
+        for k in 0..3 {
+            r += data.bodies[1].r[k] * data.bodies[1].r[k];
+        }
+        r = f64::sqrt(r);
+        let err = f64::abs(r - 1.0);
+        if max_err < err {
+            max_err = err;
+        }
+        t += dt;
+    }
+
+    return max_err;
+}
+
+fn run_test() {
+    let err1 = kepler(0.001);
+    let err2 = kepler(0.0001);
+    let err3 = kepler(0.00001);
+    println!("{err1} {err2} {err3}");
+    if err1 / 10.0 < err2 {
+        println!("Error1"); exit(1);
+    }
+    if err1 / 100.0 < err3 {
+        println!("Error2"); exit(1);
+    }
+    println!("Ok");
 }
 
 fn usage(cmd: &mut String) {
