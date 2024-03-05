@@ -5,9 +5,9 @@ use gtk::prelude::*;
 use std::rc::Rc;
 use gtk::gio;
 
-struct Context<'a> {
+struct Context {
     // controls
-    method_selector: Option<&'a gtk::Widget>,
+    method_selector: glib::WeakRef<gtk::DropDown>,
     // child process
     subprocess: Option<gio::Subprocess>,
     input: Option<gio::InputStream>,
@@ -17,10 +17,10 @@ struct Context<'a> {
     suspend: bool
 }
 
-impl<'a> Default for Context<'a> {
-    fn default() -> Context<'a> {
+impl Default for Context {
+    fn default() -> Context {
         Context {
-            method_selector: None,
+            method_selector: glib::WeakRef::new(),
             //
             subprocess: None,
             input: None,
@@ -29,6 +29,17 @@ impl<'a> Default for Context<'a> {
             header_processed: false,
             suspend: false
         }
+    }
+}
+
+fn stop_kernel(ctx: &Rc<Context>) {
+    if ctx.subprocess.is_some() {
+        ctx.cancel_read.as_ref().unwrap().cancel();
+        ctx.subprocess.as_ref().unwrap().force_exit();
+
+        let _ = ctx.line_input.as_ref().unwrap().close(None::<&gio::Cancellable>);
+        let _ = ctx.input.as_ref().unwrap().close(None::<&gio::Cancellable>);
+        // TODO: clear
     }
 }
 
@@ -48,13 +59,12 @@ fn control_widget(ctx: &Rc<Context>) -> gtk::Widget {
     bx.append(&gtk::Label::new(Some("Method:")));
     // TODO: store in ctx
     let method_selector = gtk::DropDown::from_strings(&methods);
-//    ctx.method_selector = Some(clone!(@weak (&method_selector.into())));
     bx.append(&method_selector);
     bx.append(&gtk::Label::new(Some("Input:")));
     let entry = gtk::Entry::new();
     // TODO signal
     // TODO store buffer
-    // let buffer = entry.get_buffer();
+    let buffer = entry.buffer();
     // buffer.set_text() // TODO
     bx.append(&entry);
     bx.append(&gtk::Label::new(Some("dt:")));
@@ -64,6 +74,8 @@ fn control_widget(ctx: &Rc<Context>) -> gtk::Widget {
     // dt.set_value(); // TODO
     // signal
     bx.append(&dt);
+
+    ctx.method_selector.set(Some(&method_selector.into()));
 
     return frame.into();
 }
@@ -156,7 +168,7 @@ fn main() {
     gtk::disable_setlocale();
 
     let app = gtk::Application::builder()
-        .application_id("n-bodies")
+        .application_id("gtk.n-bodies")
         .build();
     app.connect_activate(clone!(@weak ctx => move |app| {
         on_activate(&app, &ctx);
