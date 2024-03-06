@@ -5,10 +5,7 @@ use gtk::prelude::*;
 use std::rc::Rc;
 use gtk::gio;
 
-struct Context {
-    // controls
-    method_selector: glib::WeakRef<gtk::DropDown>,
-    // child process
+struct ChildProcess {
     subprocess: Option<gio::Subprocess>,
     input: Option<gio::InputStream>,
     cancel_read: Option<gio::Cancellable>,
@@ -17,11 +14,9 @@ struct Context {
     suspend: bool
 }
 
-impl Default for Context {
-    fn default() -> Context {
-        Context {
-            method_selector: glib::WeakRef::new(),
-            //
+impl ChildProcess {
+    fn new() -> ChildProcess {
+        ChildProcess {
             subprocess: None,
             input: None,
             cancel_read: None,
@@ -30,16 +25,43 @@ impl Default for Context {
             suspend: false
         }
     }
+
+    fn stop(&mut self) {
+        if self.subprocess.is_some() {
+            self.cancel_read.as_ref().unwrap().cancel();
+            self.subprocess.as_ref().unwrap().force_exit();
+
+            let _ = self.line_input.as_ref().unwrap().close(None::<&gio::Cancellable>);
+            let _ = self.input.as_ref().unwrap().close(None::<&gio::Cancellable>);
+
+            self.subprocess = None;
+        }
+    }
+
+    fn start(&mut self) {
+        self.stop();
+    }
 }
 
-fn stop_kernel(ctx: &Rc<Context>) {
-    if ctx.subprocess.is_some() {
-        ctx.cancel_read.as_ref().unwrap().cancel();
-        ctx.subprocess.as_ref().unwrap().force_exit();
+struct Context {
+    // controls
+    method_selector: glib::WeakRef<gtk::DropDown>,
+    // child process
+    process: ChildProcess
+}
 
-        let _ = ctx.line_input.as_ref().unwrap().close(None::<&gio::Cancellable>);
-        let _ = ctx.input.as_ref().unwrap().close(None::<&gio::Cancellable>);
-        // TODO: clear
+impl Context {
+    fn new() -> Context {
+        Context::default()
+    }
+}
+
+impl Default for Context {
+    fn default() -> Context {
+        Context {
+            method_selector: glib::WeakRef::new(),
+            process: ChildProcess::new()
+        }
     }
 }
 
