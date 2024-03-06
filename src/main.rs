@@ -2,12 +2,38 @@ use glib::clone;
 // glib and other dependencies are re-exported by the gtk crate
 use gtk::glib;
 use gtk::prelude::*;
-use std::rc::Rc;
+use std::io::Read;
+use std::rc::{Rc, Weak};
 use std::cell::RefCell;
 use std::ffi::OsStr;
 use gtk::gio;
 
+pub struct SharedFromThisBase<T> {
+    weak: RefCell<Weak<T>>,
+}
+
+impl<T> SharedFromThisBase<T> {
+    pub fn new() -> SharedFromThisBase<T> {
+        SharedFromThisBase {
+            weak: RefCell::new(Weak::new()),
+        }
+    }
+
+    pub fn initialise(&self, r: &Rc<T>) {
+        *self.weak.borrow_mut() = Rc::downgrade(r);
+    }
+}
+
+pub trait SharedFromThis<T> {
+    fn get_base(&self) -> &SharedFromThisBase<T>;
+
+    fn shared_from_this(&self) -> Rc<T> {
+        self.get_base().weak.borrow().upgrade().unwrap()
+    }
+}
+
 struct ChildProcess {
+    base: SharedFromThisBase<RefCell<ChildProcess>>,
     subprocess: Option<gio::Subprocess>,
     input: Option<gio::InputStream>,
     cancel_read: Option<gio::Cancellable>,
@@ -16,16 +42,27 @@ struct ChildProcess {
     suspend: bool
 }
 
+impl SharedFromThis<RefCell<ChildProcess>> for ChildProcess {
+    fn get_base(&self) -> &SharedFromThisBase<RefCell<ChildProcess>> {
+        &self.base
+    }
+}
+
 impl ChildProcess {
-    fn new() -> ChildProcess {
-        ChildProcess {
-            subprocess: None,
-            input: None,
-            cancel_read: None,
-            line_input: None,
-            header_processed: false,
-            suspend: false
-        }
+    fn new() -> Rc<RefCell<ChildProcess>> {
+        let r = Rc::new(RefCell::new(
+            ChildProcess {
+                base: SharedFromThisBase::new(),
+                subprocess: None,
+                input: None,
+                cancel_read: None,
+                line_input: None,
+                header_processed: false,
+                suspend: false
+            }
+        ));
+        r.borrow_mut().base.initialise(&r);
+        r
     }
 
     fn stop(&mut self) {
@@ -61,16 +98,25 @@ impl ChildProcess {
         let subprocess = gio::Subprocess::newv(&argv, gio::SubprocessFlags::STDOUT_PIPE).expect("cannot start");
         let input = subprocess.stdout_pipe().unwrap();
         let line_input = gio::DataInputStream::new(&input);
-        self.subprocess = Some(subprocess);
-        self.input = Some(input);
-        self.line_input = Some(line_input);
+        self.subprocess.replace(subprocess);
+        self.input.replace(input);
+        self.line_input.replace(line_input);
+        self.read_child();
     }
 
     fn read_child(&mut self) {
-        self.line_input.as_ref().unwrap().read_line_async(0.into(), None::<&gio::Cancellable>, clone!(@strong self as y => move |x| { y.on_new_data(x); }) );
+        let this = self.shared_from_this();
+        self.line_input.as_ref().unwrap().read_line_async(
+            0.into(),
+            None::<&gio::Cancellable>,
+            clone!(@strong this => move |x| { this.borrow_mut().on_new_data(x); }) );
     }
 
     fn on_new_data(&mut self, res: Result<glib::collections::Slice<u8>, glib::Error>) {
+        let unwrapped = res.unwrap();
+        let line = String::from_utf8(unwrapped.as_slice().to_vec()).unwrap();
+        println!("{:?}", line);
+        self.read_child();
     }
 }
 
@@ -79,7 +125,7 @@ struct Context {
     // controls
     method_selector: glib::WeakRef<gtk::DropDown>,
     // child process
-    process: ChildProcess
+    process: Rc<RefCell<ChildProcess>>
 }
 
 impl Context {
@@ -91,7 +137,7 @@ impl Context {
         let active = selector.selected();
         if self.method != active {
             self.method = active;
-            self.process.start(self.method);
+            self.process.borrow_mut().start(self.method);
         }
     }
 }
