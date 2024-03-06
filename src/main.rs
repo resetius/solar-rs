@@ -3,6 +3,8 @@ use glib::clone;
 use gtk::glib;
 use gtk::prelude::*;
 use std::rc::Rc;
+use std::cell::RefCell;
+use std::ffi::OsStr;
 use gtk::gio;
 
 struct ChildProcess {
@@ -38,12 +40,42 @@ impl ChildProcess {
         }
     }
 
-    fn start(&mut self) {
+    fn start(&mut self, method: u32) {
         self.stop();
+        self.spawn(method);
+    }
+
+    fn spawn(&mut self, method: u32) {
+        let mut path = std::env::current_exe().unwrap();
+        path.pop();
+        path.push("euler");
+        let argv = [
+            path.as_os_str(),
+            OsStr::new("--input"),
+            OsStr::new("solar.txt"),
+            OsStr::new("--dt"),
+            OsStr::new("0.001"),
+            OsStr::new("--T"),
+            OsStr::new("1e20")
+        ];
+        let subprocess = gio::Subprocess::newv(&argv, gio::SubprocessFlags::STDOUT_PIPE).expect("cannot start");
+        let input = subprocess.stdout_pipe().unwrap();
+        let line_input = gio::DataInputStream::new(&input);
+        self.subprocess = Some(subprocess);
+        self.input = Some(input);
+        self.line_input = Some(line_input);
+    }
+
+    fn read_child(&mut self) {
+        self.line_input.as_ref().unwrap().read_line_async(0.into(), None::<&gio::Cancellable>, clone!(@strong self as y => move |x| { y.on_new_data(x); }) );
+    }
+
+    fn on_new_data(&mut self, res: Result<glib::collections::Slice<u8>, glib::Error>) {
     }
 }
 
 struct Context {
+    method: u32,
     // controls
     method_selector: glib::WeakRef<gtk::DropDown>,
     // child process
@@ -54,18 +86,27 @@ impl Context {
     fn new() -> Context {
         Context::default()
     }
+
+    fn method_changed(&mut self, selector: &gtk::DropDown) {
+        let active = selector.selected();
+        if self.method != active {
+            self.method = active;
+            self.process.start(self.method);
+        }
+    }
 }
 
 impl Default for Context {
     fn default() -> Context {
         Context {
+            method: 100,
             method_selector: glib::WeakRef::new(),
             process: ChildProcess::new()
         }
     }
 }
 
-fn control_widget(ctx: &Rc<Context>) -> gtk::Widget {
+fn control_widget(ctx: &Rc<RefCell<Context>>) -> gtk::Widget {
     let frame = gtk::Frame::new(Some("Controls"));
     let bx = gtk::Box::new(gtk::Orientation::Vertical, 0);
 
@@ -81,6 +122,7 @@ fn control_widget(ctx: &Rc<Context>) -> gtk::Widget {
     bx.append(&gtk::Label::new(Some("Method:")));
     // TODO: store in ctx
     let method_selector = gtk::DropDown::from_strings(&methods);
+    method_selector.connect_state_flags_changed(clone!(@weak method_selector, @strong ctx => move |_, _| { ctx.borrow_mut().method_changed(&method_selector); } ));
     bx.append(&method_selector);
     bx.append(&gtk::Label::new(Some("Input:")));
     let entry = gtk::Entry::new();
@@ -97,12 +139,12 @@ fn control_widget(ctx: &Rc<Context>) -> gtk::Widget {
     // signal
     bx.append(&dt);
 
-    ctx.method_selector.set(Some(&method_selector.into()));
+    // ctx.method_selector.set(Some(&method_selector.into()));
 
     return frame.into();
 }
 
-fn info_widget(ctx: &Rc<Context>) -> gtk::Widget {
+fn info_widget(ctx: &Rc<RefCell<Context>>) -> gtk::Widget {
     let frame = gtk::Frame::new(Some("Info"));
     let bx = gtk::Box::new(gtk::Orientation::Vertical, 0);
     frame.set_child(Some(&bx));
@@ -133,7 +175,7 @@ fn info_widget(ctx: &Rc<Context>) -> gtk::Widget {
     return frame.into();
 }
 
-fn right_pane(ctx: &Rc<Context>) -> gtk::Widget {
+fn right_pane(ctx: &Rc<RefCell<Context>>) -> gtk::Widget {
     let bx = gtk::Box::new(gtk::Orientation::Vertical, 0);
 
     bx.append(&control_widget(ctx));
@@ -146,7 +188,7 @@ fn right_pane(ctx: &Rc<Context>) -> gtk::Widget {
 }
 
 // When the application is launched…
-fn on_activate(application: &gtk::Application, ctx: &Rc<Context>) {
+fn on_activate(application: &gtk::Application, ctx: &Rc<RefCell<Context>>) {
     let window = gtk::ApplicationWindow::new(application);
     window.set_title(Some("N-Body"));
     window.set_default_size(1024, 768);
@@ -183,9 +225,9 @@ fn on_activate(application: &gtk::Application, ctx: &Rc<Context>) {
 }
 
 fn main() {
-    let ctx = Rc::new(Context{
+    let ctx = Rc::new(RefCell::new(Context{
         ..Default::default()
-    });
+    }));
 
     gtk::disable_setlocale();
 
