@@ -258,8 +258,11 @@ impl Context {
             let body = &mut bodies[i];
             let x = body.r[0] * (w as f64) * zoom + (w as f64) / 2.0;
             let y = body.r[1] * (w as f64) * zoom + (h as f64) / 2.0;
-            // check active body
-            cr.set_source_rgb(body.cr, body.cg, body.cb);
+            if self.active_body == (i as i32) {
+                cr.set_source_rgb(1.0, 0.0, 0.0);
+            } else {
+                cr.set_source_rgb(body.cr, body.cg, body.cb);
+            }
             cr.arc(x, y, 2.0*body.rad, 0.0, 2.0 * std::f64::consts::PI);
             let _ = cr.fill();
 
