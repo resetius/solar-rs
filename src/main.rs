@@ -298,6 +298,15 @@ impl Context {
             None => glib::ControlFlow::Break
         }
     }
+
+    fn close(&mut self) {
+        match self.source_id.take() {
+            Some(source_id) => source_id.remove(),
+            None => ()
+        };
+
+        self.process.borrow_mut().stop();
+    }
 }
 
 impl Default for Context {
@@ -430,6 +439,8 @@ fn on_activate(application: &gtk::Application, ctx: &Rc<RefCell<Context>>) {
     // … which closes the window when clicked
     //button.connect_clicked(clone!(@weak window => move |_| window.close()));
     //window.set_child(Some(&button));
+
+    window.connect_destroy(clone!(@strong ctx => move |_| ctx.borrow_mut().close()));
 
     ctx.borrow_mut().drawing_area.set(Some(&drawing_area));
     ctx.borrow_mut().source_id.replace(glib::timeout_add_local(std::time::Duration::from_millis(16), clone!(@strong ctx => move || ctx.borrow_mut().timeout())));
