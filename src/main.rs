@@ -94,7 +94,9 @@ struct Context {
     source_id: Option<SourceId>,
     // zoom
     zoom_initial: f64,
-    zoom: f64
+    zoom: f64,
+    //
+    dt: f64
 }
 
 impl Context {
@@ -120,7 +122,9 @@ impl Context {
             source_id: None,
             //
             zoom_initial: 0.1,
-            zoom: 0.1
+            zoom: 0.1,
+            //
+            dt: 1e-3
         }));
         r.borrow_mut().base.initialise(&r);
         r
@@ -155,12 +159,13 @@ impl Context {
         } else {
             path.push("verlet");
         }
+        let dt = self.dt.to_string();
         let argv = [
             path.as_os_str(),
             OsStr::new("--input"),
             OsStr::new("solar.txt"),
             OsStr::new("--dt"),
-            OsStr::new("0.001"),
+            OsStr::new(&dt),
             OsStr::new("--T"),
             OsStr::new("1e20")
         ];
