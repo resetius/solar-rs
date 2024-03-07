@@ -257,6 +257,10 @@ impl Context {
         }
     }
 
+    fn preset_changed(&mut self, selector: &gtk::DropDown) {
+        let active = selector.selected();
+    }
+
     fn draw(&mut self, _area: &gtk::DrawingArea, cr: &gtk::cairo::Context, w: i32, h: i32) {
         let bodies = &mut self.bodies;
         let zoom = self.zoom;
@@ -383,14 +387,13 @@ fn control_widget(ctx: &Rc<RefCell<Context>>) -> gtk::Widget {
     bx.append(&gtk::Label::new(Some("Preset:")));
     let presets = ["2 Bodies", "3 Bodies", "Solar", "Saturn"];
     let preset_selector = gtk::DropDown::from_strings(&presets);
-
-    // TODO: signal
+    preset_selector.connect_state_flags_changed(clone!(@strong ctx => move |a, _| { ctx.borrow_mut().preset_changed(a); } ));
     bx.append(&preset_selector);
 
     let methods = ["Euler", "Verlet"];
     bx.append(&gtk::Label::new(Some("Method:")));
     let method_selector = gtk::DropDown::from_strings(&methods);
-    method_selector.connect_state_flags_changed(clone!(@weak method_selector, @strong ctx => move |_, _| { ctx.borrow_mut().method_changed(&method_selector); } ));
+    method_selector.connect_state_flags_changed(clone!(@strong ctx => move |a, _| { ctx.borrow_mut().method_changed(a); } ));
     bx.append(&method_selector);
     bx.append(&gtk::Label::new(Some("Input:")));
     let entry = gtk::Entry::new();
