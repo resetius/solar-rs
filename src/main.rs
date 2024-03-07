@@ -432,7 +432,7 @@ fn on_activate(application: &gtk::Application, ctx: &Rc<RefCell<Context>>) {
     //window.set_child(Some(&button));
 
     ctx.borrow_mut().drawing_area.set(Some(&drawing_area));
-    ctx.borrow_mut().source_id.replace(glib::timeout_add(std::time::Duration::from_millis(16), clone!(@strong ctx => move || ctx.borrow_mut().timeout())));
+    ctx.borrow_mut().source_id.replace(glib::timeout_add_local(std::time::Duration::from_millis(16), clone!(@strong ctx => move || ctx.borrow_mut().timeout())));
 
     window.present();
 }
