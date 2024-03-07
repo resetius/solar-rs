@@ -91,7 +91,10 @@ struct Context {
     header_processed: bool,
     suspend: bool,
     // timeout
-    source_id: Option<SourceId>
+    source_id: Option<SourceId>,
+    // zoom
+    zoom_initial: f64,
+    zoom: f64
 }
 
 impl Context {
@@ -114,7 +117,10 @@ impl Context {
             header_processed: false,
             suspend: false,
             //
-            source_id: None
+            source_id: None,
+            //
+            zoom_initial: 0.1,
+            zoom: 0.1
         }));
         r.borrow_mut().base.initialise(&r);
         r
@@ -253,7 +259,7 @@ impl Context {
 
     fn draw(&mut self, _area: &gtk::DrawingArea, cr: &gtk::cairo::Context, w: i32, h: i32) {
         let bodies = &mut self.bodies;
-        let zoom = 0.1;
+        let zoom = self.zoom;
         for i in 0..bodies.len() {
             let body = &mut bodies[i];
             let x = body.r[0] * (w as f64) * zoom + (w as f64) / 2.0;
@@ -315,7 +321,7 @@ impl Context {
             if argmin < 0 || dist < mindist
             {
                 mindist = dist;
-                argmin = (i as i32);
+                argmin = i as i32;
             }
         }
         if argmin >= 0 && mindist * mindist < 100.0
@@ -342,6 +348,15 @@ impl Context {
             self.body_selector.upgrade().map(|x| x.set_selected(index as u32));
             self.active_body = index;
         }
+    }
+
+    fn zoom_begin(&mut self, _: &gtk::GestureZoom, _: Option<&gtk::gdk::EventSequence>) {
+        self.zoom_initial = self.zoom;
+    }
+
+    fn zoom_scale_changed(&mut self, _: &gtk::GestureZoom, scale: f64) {
+        self.zoom = self.zoom_initial * scale;
+        gtk::Widget::queue_draw(&self.drawing_area.upgrade().unwrap().upcast());
     }
 
     fn close(&mut self) {
@@ -450,8 +465,6 @@ fn on_activate(application: &gtk::Application, ctx: &Rc<RefCell<Context>>) {
     overlay.set_child(Some(&drawing_area));
     overlay.add_overlay(&right_pane(ctx));
 
-    // set_draw_func
-
     let motion = gtk::EventControllerMotion::new();
     motion.connect_motion(clone!(@strong ctx => move |a, b, c| ctx.borrow_mut().motion_notify(a, b, c)));
     motion.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -467,6 +480,10 @@ fn on_activate(application: &gtk::Application, ctx: &Rc<RefCell<Context>>) {
     drawing_area.add_controller(scroll.upcast::<gtk::EventController>());
 
     let zoom = gtk::GestureZoom::new();
+    zoom.connect_begin(clone!(@strong ctx => move |a, b| ctx.borrow_mut().zoom_begin(a, b)));
+    zoom.connect_scale_changed(clone!(@strong ctx => move |a, b| ctx.borrow_mut().zoom_scale_changed(a, b)));
+    zoom.set_propagation_phase(gtk::PropagationPhase::Capture);
+    drawing_area.add_controller(zoom.upcast::<gtk::EventController>());
 
     // … with a button in it …
     //let button = gtk::Button::with_label("Hello World!");
