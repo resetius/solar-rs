@@ -359,6 +359,16 @@ impl Context {
         gtk::Widget::queue_draw(&self.drawing_area.upgrade().unwrap().upcast());
     }
 
+    fn mouse_scroll(&mut self, _: &gtk::EventControllerScroll, _dx: f64, dy: f64) -> glib::Propagation {
+        if dy > 0.0 {
+            self.zoom /= 1.1;
+        } else if dy < 0.0 {
+            self.zoom *= 1.1;
+        }
+        gtk::Widget::queue_draw(&self.drawing_area.upgrade().unwrap().upcast());
+        glib::Propagation::Stop
+    }
+
     fn close(&mut self) {
         self.source_id.take().map(|source_id| source_id.remove());
         self.stop();
@@ -379,7 +389,6 @@ fn control_widget(ctx: &Rc<RefCell<Context>>) -> gtk::Widget {
 
     let methods = ["Euler", "Verlet"];
     bx.append(&gtk::Label::new(Some("Method:")));
-    // TODO: store in ctx
     let method_selector = gtk::DropDown::from_strings(&methods);
     method_selector.connect_state_flags_changed(clone!(@weak method_selector, @strong ctx => move |_, _| { ctx.borrow_mut().method_changed(&method_selector); } ));
     bx.append(&method_selector);
@@ -400,7 +409,7 @@ fn control_widget(ctx: &Rc<RefCell<Context>>) -> gtk::Widget {
 
     ctx.borrow_mut().method_selector.set(Some(&method_selector.into()));
 
-    return frame.into();
+    frame.into()
 }
 
 fn info_widget(ctx: &Rc<RefCell<Context>>) -> gtk::Widget {
@@ -432,7 +441,7 @@ fn info_widget(ctx: &Rc<RefCell<Context>>) -> gtk::Widget {
 
     ctx.borrow_mut().body_selector.set(Some(&body_selector.into()));
 
-    return frame.into();
+    frame.into()
 }
 
 fn right_pane(ctx: &Rc<RefCell<Context>>) -> gtk::Widget {
@@ -444,7 +453,7 @@ fn right_pane(ctx: &Rc<RefCell<Context>>) -> gtk::Widget {
     bx.set_halign(gtk::Align::End);
     bx.set_valign(gtk::Align::Start);
 
-    return bx.into();
+    bx.into()
 }
 
 // When the application is launched…
@@ -476,7 +485,8 @@ fn on_activate(application: &gtk::Application, ctx: &Rc<RefCell<Context>>) {
     drawing_area.add_controller(gclick.upcast::<gtk::EventController>());
 
     let scroll = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
-
+    scroll.connect_scroll(clone!(@strong ctx => move |a, dx, dy| ctx.borrow_mut().mouse_scroll(a, dx, dy)));
+    scroll.set_propagation_phase(gtk::PropagationPhase::Capture);
     drawing_area.add_controller(scroll.upcast::<gtk::EventController>());
 
     let zoom = gtk::GestureZoom::new();
