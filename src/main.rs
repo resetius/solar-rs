@@ -147,6 +147,7 @@ impl ChildProcess {
         self.subprocess.replace(subprocess);
         self.input.replace(input);
         self.line_input.replace(line_input);
+        self.cancel_read.replace(gio::Cancellable::new());
         self.read_child();
     }
 
@@ -154,7 +155,7 @@ impl ChildProcess {
         let this = self.shared_from_this();
         self.line_input.as_ref().unwrap().read_line_async(
             0.into(),
-            None::<&gio::Cancellable>,
+            self.cancel_read.as_ref(),
             clone!(@strong this => move |x| { this.borrow_mut().on_new_data(x); }) );
     }
 
