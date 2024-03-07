@@ -67,41 +67,56 @@ impl Body {
     }
 }
 
-struct ChildProcess {
-    base: SharedFromThisBase<RefCell<ChildProcess>>,
-    ctx: Weak<RefCell<Context>>,
+impl SharedFromThis<RefCell<Context>> for Context {
+    fn get_base(&self) -> &SharedFromThisBase<RefCell<Context>> {
+        &self.base
+    }
+}
 
+struct Context {
+    base: SharedFromThisBase<RefCell<Context>>,
     bodies: Vec<Body>,
-
+    method: u32,
+    active_body: i32,
+    // controls
+    r: Vec<glib::WeakRef<gtk::Label>>,
+    v: Vec<glib::WeakRef<gtk::Label>>,
+    body_selector: glib::WeakRef<gtk::DropDown>,
+    method_selector: glib::WeakRef<gtk::DropDown>,
+    drawing_area: glib::WeakRef<gtk::DrawingArea>,
+    // child process
     subprocess: Option<gio::Subprocess>,
     input: Option<gio::InputStream>,
     cancel_read: Option<gio::Cancellable>,
     line_input: Option<gio::DataInputStream>,
     header_processed: bool,
-    suspend: bool
+    suspend: bool,
+    // timeout
+    source_id: Option<SourceId>
 }
 
-impl SharedFromThis<RefCell<ChildProcess>> for ChildProcess {
-    fn get_base(&self) -> &SharedFromThisBase<RefCell<ChildProcess>> {
-        &self.base
-    }
-}
-
-impl ChildProcess {
-    fn new() -> Rc<RefCell<ChildProcess>> {
-        let r = Rc::new(RefCell::new(
-            ChildProcess {
-                base: SharedFromThisBase::new(),
-                ctx: Weak::new(),
-                bodies: Vec::new(),
-                subprocess: None,
-                input: None,
-                cancel_read: None,
-                line_input: None,
-                header_processed: false,
-                suspend: false
-            }
-        ));
+impl Context {
+    fn new() -> Rc<RefCell<Context>> {
+        let r = Rc::new(RefCell::new(Context{
+            base: SharedFromThisBase::new(),
+            bodies: Vec::new(),
+            method: 100,
+            active_body: -1,
+            r: Vec::new(),
+            v: Vec::new(),
+            body_selector: glib::WeakRef::new(),
+            method_selector: glib::WeakRef::new(),
+            drawing_area: glib::WeakRef::new(),
+            //
+            subprocess: None,
+            input: None,
+            cancel_read: None,
+            line_input: None,
+            header_processed: false,
+            suspend: false,
+            //
+            source_id: None
+        }));
         r.borrow_mut().base.initialise(&r);
         r
     }
@@ -118,17 +133,16 @@ impl ChildProcess {
         }
     }
 
-    fn start(&mut self, method: u32) {
+    fn start(&mut self) {
         self.stop();
-
         self.bodies.clear();
-        // active_body
         self.header_processed = false;
         self.suspend = false;
-        self.spawn(method);
+        self.active_body = -1;
+        self.spawn();
     }
 
-    fn spawn(&mut self, method: u32) {
+    fn spawn(&mut self) {
         let mut path = std::env::current_exe().unwrap();
         path.pop();
         path.push("euler");
@@ -193,13 +207,12 @@ impl ChildProcess {
             self.bodies.push(body);
         } else if !self.header_processed {
             self.header_processed = true;
-            // TODO: fill selector
-            let selector = self.ctx.upgrade().unwrap().borrow_mut().body_selector.upgrade().unwrap();
-            let model: gtk::StringList = selector.model().unwrap().downcast().unwrap();
+            let model: gtk::StringList = self.body_selector.upgrade().unwrap().model().unwrap().downcast().unwrap();
             for i in 0..self.bodies.len() {
                 println!("Append {}", self.bodies[i].name);
                 model.append(&self.bodies[i].name);
             }
+            self.active_body = 0;
         }
 
         if self.header_processed {
@@ -222,7 +235,7 @@ impl ChildProcess {
                     }
                 }
             }
-            self.ctx.upgrade().unwrap().borrow_mut().update_all();
+            self.update_all();
             self.suspend = true;
         }
 
@@ -230,39 +243,17 @@ impl ChildProcess {
             self.read_child();
         }
     }
-}
-
-struct Context {
-    method: u32,
-    // controls
-    body_selector: glib::WeakRef<gtk::DropDown>,
-    method_selector: glib::WeakRef<gtk::DropDown>,
-    drawing_area: glib::WeakRef<gtk::DrawingArea>,
-    // child process
-    process: Rc<RefCell<ChildProcess>>,
-    // timeout
-    source_id: Option<SourceId>
-}
-
-impl Context {
-    fn new() -> Rc<RefCell<Context>> {
-        let r = Rc::new(RefCell::new(Context{
-            ..Default::default()
-        }));
-        r.borrow_mut().process.borrow_mut().ctx = Rc::downgrade(&r);
-        r
-    }
 
     fn method_changed(&mut self, selector: &gtk::DropDown) {
         let active = selector.selected();
         if self.method != active {
             self.method = active;
-            self.process.borrow_mut().start(self.method);
+            self.start();
         }
     }
 
     fn draw(&mut self, _area: &gtk::DrawingArea, cr: &gtk::cairo::Context, w: i32, h: i32) {
-        let bodies = &mut self.process.borrow_mut().bodies;
+        let bodies = &mut self.bodies;
         let zoom = 0.1;
         for i in 0..bodies.len() {
             let body = &mut bodies[i];
@@ -285,13 +276,24 @@ impl Context {
     }
 
     fn update_all(&mut self) {
+        let i = self.active_body;
+        if i >= 0 && i < (self.bodies.len() as i32) {
+            let body = &self.bodies[i as usize];
+            let cx = ['x', 'y', 'z'];
+            for j in 0..3 {
+                let fmt = format!("<tt>r<sub>{}</sub> = {:+.8e}</tt>", cx[j], body.r[j]);
+                self.r[j].upgrade().unwrap().set_label(&fmt);
+                let fmt = format!("<tt>v<sub>{}</sub> = {:+.8e}</tt>", cx[j], body.v[j]);
+                self.v[j].upgrade().unwrap().set_label(&fmt);
+            }
+        }
         gtk::Widget::queue_draw(&self.drawing_area.upgrade().unwrap().upcast());
     }
 
     fn timeout(&mut self) -> glib::ControlFlow {
-        if self.process.borrow().header_processed && self.process.borrow().suspend {
-            self.process.borrow_mut().suspend = false;
-            self.process.borrow_mut().read_child();
+        if self.header_processed && self.suspend {
+            self.suspend = false;
+            self.read_child();
         }
 
         match self.source_id {
@@ -302,20 +304,7 @@ impl Context {
 
     fn close(&mut self) {
         self.source_id.take().map(|source_id| source_id.remove());
-        self.process.borrow_mut().stop();
-    }
-}
-
-impl Default for Context {
-    fn default() -> Context {
-        Context {
-            method: 100,
-            body_selector: glib::WeakRef::new(),
-            method_selector: glib::WeakRef::new(),
-            drawing_area: glib::WeakRef::new(),
-            process: ChildProcess::new(),
-            source_id: None
-        }
+        self.stop();
     }
 }
 
@@ -372,16 +361,16 @@ fn info_widget(ctx: &Rc<RefCell<Context>>) -> gtk::Widget {
     for i in 0..3 {
         let x = gtk::Label::new(Some("-"));
         bx.append(&x);
-        // store x
         x.set_width_chars(30);
         x.set_use_markup(true);
+        ctx.borrow_mut().r.push(gtk::prelude::ObjectExt::downgrade(&x));
     }
     for i in 0..3 {
         let vx = gtk::Label::new(Some("-"));
         bx.append(&vx);
-        // store vx
         vx.set_width_chars(30);
         vx.set_use_markup(true);
+        ctx.borrow_mut().v.push(gtk::prelude::ObjectExt::downgrade(&vx));
     }
 
     ctx.borrow_mut().body_selector.set(Some(&body_selector.into()));
