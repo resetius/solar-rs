@@ -382,6 +382,14 @@ impl Context {
         glib::Propagation::Stop
     }
 
+    fn dt_changed(&mut self, spin: &gtk::SpinButton) {
+        let value = spin.value();
+        if value != self.dt {
+            self.dt = value;
+            self.start();
+        }
+    }
+
     fn close(&mut self) {
         self.source_id.take().map(|source_id| source_id.remove());
         self.stop();
@@ -415,8 +423,8 @@ fn control_widget(ctx: &Rc<RefCell<Context>>) -> gtk::Widget {
     // TODO store dt
     let dt = gtk::SpinButton::with_range(1e-14, 0.1, 0.00001);
     dt.set_digits(8);
-    // dt.set_value(); // TODO
-    // signal
+    dt.set_value(ctx.borrow().dt);
+    dt.connect_value_changed(clone!(@strong ctx => move |x| ctx.borrow_mut().dt_changed(x)));
     bx.append(&dt);
 
     ctx.borrow_mut().method_selector.set(Some(&method_selector.into()));
