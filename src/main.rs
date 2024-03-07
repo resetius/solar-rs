@@ -68,6 +68,8 @@ impl Body {
 
 struct ChildProcess {
     base: SharedFromThisBase<RefCell<ChildProcess>>,
+    bodies: Vec<Body>,
+
     subprocess: Option<gio::Subprocess>,
     input: Option<gio::InputStream>,
     cancel_read: Option<gio::Cancellable>,
@@ -87,6 +89,7 @@ impl ChildProcess {
         let r = Rc::new(RefCell::new(
             ChildProcess {
                 base: SharedFromThisBase::new(),
+                bodies: Vec::new(),
                 subprocess: None,
                 input: None,
                 cancel_read: None,
@@ -150,15 +153,19 @@ impl ChildProcess {
         if res.is_err() { return; }
 
         let unwrapped = res.unwrap();
-        let mut parts = unwrapped.split(|x| *x != b' ');
+        let mut parts = unwrapped.split(|x| *x == b' ');
         let first = parts.next().unwrap();
         if first[0] == b't' {
             // skip column names
         } else if first[0] == b'#' {
+            let mut body = Body::new();
             // header
             let name = std::str::from_utf8(parts.next().unwrap()).unwrap();
             let m = std::str::from_utf8(parts.next().unwrap()).unwrap().parse::<f64>().unwrap();
-            let color = i64::from_str_radix(std::str::from_utf8(parts.next().unwrap()).unwrap(), 16).unwrap();
+            let color = match parts.next() {
+                Some(s) => i64::from_str_radix(std::str::from_utf8(s).unwrap(), 16).unwrap(),
+                None => 0
+            };
             let b = (((color >> 0) & 0xff) as f64) / 256.0;
             let g = (((color >> 8) & 0xff) as f64) / 256.0;
             let r = (((color >> 16) & 0xff) as f64) / 256.0;
@@ -167,12 +174,34 @@ impl ChildProcess {
                 None => 1.0
             };
             println!("{} {} r{} g{} b{} {}", name, m, r, g, b, rad);
-        } else {
-
+            body.name = String::from(name);
+            body.m = m;
+            body.cb = b;
+            body.cg = g;
+            body.cr = r;
+            body.rad = rad;
+        } else if !self.header_processed {
+            self.header_processed = true;
+            // TODO: fill selector
         }
-        //let line = String::from_utf8(bytes.to_vec()).unwrap();
-        //println!("{:?}", line);
-        self.read_child();
+
+        if self.header_processed {
+            parts.next(); // skip time
+            for i in 0..self.bodies.len() {
+                for j in 0..3 {
+                    self.bodies[i].r[j] = std::str::from_utf8(parts.next().unwrap()).unwrap().parse::<f64>().unwrap();
+                }
+                for j in 0..3 {
+                    self.bodies[i].v[j] = std::str::from_utf8(parts.next().unwrap()).unwrap().parse::<f64>().unwrap();
+                }
+            }
+            // TODO: update
+            self.suspend = true;
+        }
+
+        if !self.suspend {
+            self.read_child();
+        }
     }
 }
 
