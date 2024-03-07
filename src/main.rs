@@ -301,11 +301,7 @@ impl Context {
     }
 
     fn close(&mut self) {
-        match self.source_id.take() {
-            Some(source_id) => source_id.remove(),
-            None => ()
-        };
-
+        self.source_id.take().map(|source_id| source_id.remove());
         self.process.borrow_mut().stop();
     }
 }
