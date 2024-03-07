@@ -147,9 +147,31 @@ impl ChildProcess {
     }
 
     fn on_new_data(&mut self, res: Result<glib::collections::Slice<u8>, glib::Error>) {
+        if res.is_err() { return; }
+
         let unwrapped = res.unwrap();
-        let line = String::from_utf8(unwrapped.as_slice().to_vec()).unwrap();
-        println!("{:?}", line);
+        let mut parts = unwrapped.split(|x| *x != b' ');
+        let first = parts.next().unwrap();
+        if first[0] == b't' {
+            // skip column names
+        } else if first[0] == b'#' {
+            // header
+            let name = std::str::from_utf8(parts.next().unwrap()).unwrap();
+            let m = std::str::from_utf8(parts.next().unwrap()).unwrap().parse::<f64>().unwrap();
+            let color = i64::from_str_radix(std::str::from_utf8(parts.next().unwrap()).unwrap(), 16).unwrap();
+            let b = (((color >> 0) & 0xff) as f64) / 256.0;
+            let g = (((color >> 8) & 0xff) as f64) / 256.0;
+            let r = (((color >> 16) & 0xff) as f64) / 256.0;
+            let rad = match parts.next() {
+                Some(s) => std::str::from_utf8(s).unwrap().parse::<f64>().unwrap(),
+                None => 1.0
+            };
+            println!("{} {} r{} g{} b{} {}", name, m, r, g, b, rad);
+        } else {
+
+        }
+        //let line = String::from_utf8(bytes.to_vec()).unwrap();
+        //println!("{:?}", line);
         self.read_child();
     }
 }
