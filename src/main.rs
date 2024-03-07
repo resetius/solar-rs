@@ -150,7 +150,11 @@ impl Context {
     fn spawn(&mut self) {
         let mut path = std::env::current_exe().unwrap();
         path.pop();
-        path.push("euler");
+        if self.method == 0 {
+            path.push("euler");
+        } else {
+            path.push("verlet");
+        }
         let argv = [
             path.as_os_str(),
             OsStr::new("--input"),
