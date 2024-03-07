@@ -1,6 +1,7 @@
 use glib::clone;
 // glib and other dependencies are re-exported by the gtk crate
 use gtk::glib;
+use gtk::glib::SourceId;
 use gtk::prelude::*;
 use std::io::Read;
 use std::rc::{Rc, Weak};
@@ -220,7 +221,7 @@ impl ChildProcess {
                     }
                 }
             }
-            // TODO: update
+            self.ctx.upgrade().unwrap().borrow_mut().update_all();
             self.suspend = true;
         }
 
@@ -235,8 +236,11 @@ struct Context {
     // controls
     body_selector: glib::WeakRef<gtk::DropDown>,
     method_selector: glib::WeakRef<gtk::DropDown>,
+    drawing_area: glib::WeakRef<gtk::DrawingArea>,
     // child process
-    process: Rc<RefCell<ChildProcess>>
+    process: Rc<RefCell<ChildProcess>>,
+    // timeout
+    source_id: Option<SourceId>
 }
 
 impl Context {
@@ -255,6 +259,45 @@ impl Context {
             self.process.borrow_mut().start(self.method);
         }
     }
+
+    fn draw(&mut self, _area: &gtk::DrawingArea, cr: &gtk::cairo::Context, w: i32, h: i32) {
+        let bodies = &mut self.process.borrow_mut().bodies;
+        let zoom = 0.1;
+        for i in 0..bodies.len() {
+            let body = &mut bodies[i];
+            let x = body.r[0] * (w as f64) * zoom + (w as f64) / 2.0;
+            let y = body.r[1] * (w as f64) * zoom + (h as f64) / 2.0;
+            // check active body
+            cr.set_source_rgb(body.cr, body.cg, body.cb);
+            cr.arc(x, y, 2.0*body.rad, 0.0, 2.0 * std::f64::consts::PI);
+            let _ = cr.fill();
+
+            body.x0 = x;
+            body.y0 = y;
+
+            if body.show_tip {
+                cr.set_font_size(13.0);
+                cr.move_to(x, y);
+                let _ = cr.show_text(&body.name);
+            }
+        }
+    }
+
+    fn update_all(&mut self) {
+        gtk::Widget::queue_draw(&self.drawing_area.upgrade().unwrap().upcast());
+    }
+
+    fn timeout(&mut self) -> glib::ControlFlow {
+        if self.process.borrow().header_processed && self.process.borrow().suspend {
+            self.process.borrow_mut().suspend = false;
+            self.process.borrow_mut().read_child();
+        }
+
+        match self.source_id {
+            Some(_) => glib::ControlFlow::Continue,
+            None => glib::ControlFlow::Break
+        }
+    }
 }
 
 impl Default for Context {
@@ -263,7 +306,9 @@ impl Default for Context {
             method: 100,
             body_selector: glib::WeakRef::new(),
             method_selector: glib::WeakRef::new(),
-            process: ChildProcess::new()
+            drawing_area: glib::WeakRef::new(),
+            process: ChildProcess::new(),
+            source_id: None
         }
     }
 }
@@ -301,7 +346,7 @@ fn control_widget(ctx: &Rc<RefCell<Context>>) -> gtk::Widget {
     // signal
     bx.append(&dt);
 
-    // ctx.method_selector.set(Some(&method_selector.into()));
+    ctx.borrow_mut().method_selector.set(Some(&method_selector.into()));
 
     return frame.into();
 }
@@ -359,6 +404,7 @@ fn on_activate(application: &gtk::Application, ctx: &Rc<RefCell<Context>>) {
     let drawing_area = gtk::DrawingArea::new();
     drawing_area.set_vexpand(true);
     drawing_area.set_hexpand(true);
+    drawing_area.set_draw_func(clone!(@strong ctx => move |a, b, c, d| ctx.borrow_mut().draw(a, b, c, d)));
 
     let overlay = gtk::Overlay::new();
 
@@ -384,6 +430,10 @@ fn on_activate(application: &gtk::Application, ctx: &Rc<RefCell<Context>>) {
     // … which closes the window when clicked
     //button.connect_clicked(clone!(@weak window => move |_| window.close()));
     //window.set_child(Some(&button));
+
+    ctx.borrow_mut().drawing_area.set(Some(&drawing_area));
+    ctx.borrow_mut().source_id.replace(glib::timeout_add(std::time::Duration::from_millis(16), clone!(@strong ctx => move || ctx.borrow_mut().timeout())));
+
     window.present();
 }
 
