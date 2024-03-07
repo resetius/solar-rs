@@ -68,6 +68,8 @@ impl Body {
 
 struct ChildProcess {
     base: SharedFromThisBase<RefCell<ChildProcess>>,
+    ctx: Weak<RefCell<Context>>,
+
     bodies: Vec<Body>,
 
     subprocess: Option<gio::Subprocess>,
@@ -89,6 +91,7 @@ impl ChildProcess {
         let r = Rc::new(RefCell::new(
             ChildProcess {
                 base: SharedFromThisBase::new(),
+                ctx: Weak::new(),
                 bodies: Vec::new(),
                 subprocess: None,
                 input: None,
@@ -116,6 +119,11 @@ impl ChildProcess {
 
     fn start(&mut self, method: u32) {
         self.stop();
+
+        self.bodies.clear();
+        // active_body
+        self.header_processed = false;
+        self.suspend = false;
         self.spawn(method);
     }
 
@@ -153,7 +161,7 @@ impl ChildProcess {
         if res.is_err() { return; }
 
         let unwrapped = res.unwrap();
-        let mut parts = unwrapped.split(|x| *x == b' ');
+        let mut parts = unwrapped.split(|x| *x == b' ' || *x == b'\n');
         let first = parts.next().unwrap();
         if first[0] == b't' {
             // skip column names
@@ -180,19 +188,36 @@ impl ChildProcess {
             body.cg = g;
             body.cr = r;
             body.rad = rad;
+            self.bodies.push(body);
         } else if !self.header_processed {
             self.header_processed = true;
             // TODO: fill selector
+            let selector = self.ctx.upgrade().unwrap().borrow_mut().body_selector.upgrade().unwrap();
+            let model: gtk::StringList = selector.model().unwrap().downcast().unwrap();
+            for i in 0..self.bodies.len() {
+                println!("Append {}", self.bodies[i].name);
+                model.append(&self.bodies[i].name);
+            }
         }
 
         if self.header_processed {
-            parts.next(); // skip time
+            // time in first
             for i in 0..self.bodies.len() {
                 for j in 0..3 {
-                    self.bodies[i].r[j] = std::str::from_utf8(parts.next().unwrap()).unwrap().parse::<f64>().unwrap();
+                    match parts.next() {
+                        Some(s) => {
+                            self.bodies[i].r[j] = std::str::from_utf8(s).unwrap().parse::<f64>().unwrap()
+                        },
+                        _ => break
+                    }
                 }
                 for j in 0..3 {
-                    self.bodies[i].v[j] = std::str::from_utf8(parts.next().unwrap()).unwrap().parse::<f64>().unwrap();
+                    match parts.next() {
+                        Some(s) => {
+                            self.bodies[i].v[j] = std::str::from_utf8(s).unwrap().parse::<f64>().unwrap()
+                        },
+                        _ => break
+                    }
                 }
             }
             // TODO: update
@@ -208,14 +233,19 @@ impl ChildProcess {
 struct Context {
     method: u32,
     // controls
+    body_selector: glib::WeakRef<gtk::DropDown>,
     method_selector: glib::WeakRef<gtk::DropDown>,
     // child process
     process: Rc<RefCell<ChildProcess>>
 }
 
 impl Context {
-    fn new() -> Context {
-        Context::default()
+    fn new() -> Rc<RefCell<Context>> {
+        let r = Rc::new(RefCell::new(Context{
+            ..Default::default()
+        }));
+        r.borrow_mut().process.borrow_mut().ctx = Rc::downgrade(&r);
+        r
     }
 
     fn method_changed(&mut self, selector: &gtk::DropDown) {
@@ -231,6 +261,7 @@ impl Default for Context {
     fn default() -> Context {
         Context {
             method: 100,
+            body_selector: glib::WeakRef::new(),
             method_selector: glib::WeakRef::new(),
             process: ChildProcess::new()
         }
@@ -281,7 +312,6 @@ fn info_widget(ctx: &Rc<RefCell<Context>>) -> gtk::Widget {
     frame.set_child(Some(&bx));
 
     let strings = [];
-    // TODO: store body_selector
     let body_selector = gtk::DropDown::from_strings(&strings);
     body_selector.set_selected(0);
     // signal
@@ -302,6 +332,8 @@ fn info_widget(ctx: &Rc<RefCell<Context>>) -> gtk::Widget {
         vx.set_width_chars(30);
         vx.set_use_markup(true);
     }
+
+    ctx.borrow_mut().body_selector.set(Some(&body_selector.into()));
 
     return frame.into();
 }
@@ -356,9 +388,7 @@ fn on_activate(application: &gtk::Application, ctx: &Rc<RefCell<Context>>) {
 }
 
 fn main() {
-    let ctx = Rc::new(RefCell::new(Context{
-        ..Default::default()
-    }));
+    let ctx = Context::new();
 
     gtk::disable_setlocale();
 
