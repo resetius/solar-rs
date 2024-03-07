@@ -32,6 +32,40 @@ pub trait SharedFromThis<T> {
     }
 }
 
+struct Body {
+    x0: f64,
+    y0: f64,
+    show_tip: bool,
+    name: String,
+    r: [f64;3],
+    v: [f64;3],
+    m: f64,
+    // color
+    cr: f64,
+    cg: f64,
+    cb: f64,
+    // radius
+    rad: f64
+}
+
+impl Body {
+    fn new() -> Body {
+        Body {
+            x0: 0.0,
+            y0: 0.0,
+            show_tip: false,
+            name: String::new(),
+            r: [0.0, 0.0, 0.0],
+            v: [0.0, 0.0, 0.0],
+            m: 0.0,
+            cr: 0.0,
+            cg: 0.0,
+            cb: 0.0,
+            rad: 0.0
+        }
+    }
+}
+
 struct ChildProcess {
     base: SharedFromThisBase<RefCell<ChildProcess>>,
     subprocess: Option<gio::Subprocess>,
