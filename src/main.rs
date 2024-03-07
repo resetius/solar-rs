@@ -326,7 +326,17 @@ impl Context {
         }
     }
 
-    fn button_press(&mut self, _: &gtk::GestureClick, press: i32, x: f64, y: f64) {
+    fn motion_notify(&mut self, _: &gtk::EventControllerMotion, x: f64, y: f64) {
+        let argmin = self.get_body(x, y);
+        for i in 0..self.bodies.len() {
+            self.bodies[i].show_tip = false;
+        }
+        if argmin >= 0 {
+            self.bodies[argmin as usize].show_tip = true;
+        }
+    }
+
+    fn button_press(&mut self, _: &gtk::GestureClick, _press: i32, x: f64, y: f64) {
         let index = self.get_body(x, y);
         if index >= 0 {
             self.body_selector.upgrade().map(|x| x.set_selected(index as u32));
@@ -443,6 +453,9 @@ fn on_activate(application: &gtk::Application, ctx: &Rc<RefCell<Context>>) {
     // set_draw_func
 
     let motion = gtk::EventControllerMotion::new();
+    motion.connect_motion(clone!(@strong ctx => move |a, b, c| ctx.borrow_mut().motion_notify(a, b, c)));
+    motion.set_propagation_phase(gtk::PropagationPhase::Capture);
+    drawing_area.add_controller(motion.upcast::<gtk::EventController>());
 
     let gclick = gtk::GestureClick::new();
     gclick.connect_pressed(clone!(@strong ctx => move |a, b, c, d| ctx.borrow_mut().button_press(a, b, c, d)));
