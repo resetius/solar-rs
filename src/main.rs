@@ -3,7 +3,6 @@ use glib::clone;
 use gtk::glib;
 use gtk::glib::SourceId;
 use gtk::prelude::*;
-use std::io::Read;
 use std::rc::{Rc, Weak};
 use std::cell::RefCell;
 use std::ffi::OsStr;
@@ -302,6 +301,36 @@ impl Context {
         }
     }
 
+    fn get_body(&self, x: f64, y: f64) -> i32 {
+        let mut mindist = -1.0;
+        let mut argmin = -1;
+        for i in 0..self.bodies.len()
+        {
+            let body = &self.bodies[i];
+            let dist = (body.x0 - x) * (body.x0 - x) +
+                            (body.y0 - y) * (body.y0 - y);
+            if argmin < 0 || dist < mindist
+            {
+                mindist = dist;
+                argmin = (i as i32);
+            }
+        }
+        if argmin >= 0 && mindist * mindist < 100.0
+        {
+            argmin
+        } else {
+            -1
+        }
+    }
+
+    fn button_press(&mut self, _: &gtk::GestureClick, press: i32, x: f64, y: f64) {
+        let index = self.get_body(x, y);
+        if index >= 0 {
+            self.body_selector.upgrade().map(|x| x.set_selected(index as u32));
+            self.active_body = index;
+        }
+    }
+
     fn close(&mut self) {
         self.source_id.take().map(|source_id| source_id.remove());
         self.stop();
@@ -358,14 +387,14 @@ fn info_widget(ctx: &Rc<RefCell<Context>>) -> gtk::Widget {
 
     bx.append(&body_selector);
 
-    for i in 0..3 {
+    for _i in 0..3 {
         let x = gtk::Label::new(Some("-"));
         bx.append(&x);
         x.set_width_chars(30);
         x.set_use_markup(true);
         ctx.borrow_mut().r.push(gtk::prelude::ObjectExt::downgrade(&x));
     }
-    for i in 0..3 {
+    for _i in 0..3 {
         let vx = gtk::Label::new(Some("-"));
         bx.append(&vx);
         vx.set_width_chars(30);
@@ -412,11 +441,14 @@ fn on_activate(application: &gtk::Application, ctx: &Rc<RefCell<Context>>) {
 
     let motion = gtk::EventControllerMotion::new();
 
-    let glick = gtk::GestureClick::new();
+    let gclick = gtk::GestureClick::new();
+    gclick.connect_pressed(clone!(@strong ctx => move |a, b, c, d| ctx.borrow_mut().button_press(a, b, c, d)));
+    gclick.set_propagation_phase(gtk::PropagationPhase::Capture);
+    drawing_area.add_controller(gclick.upcast::<gtk::EventController>());
 
     let scroll = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
 
-    // drawing_area.add_controller(Some(&scroll));
+    drawing_area.add_controller(scroll.upcast::<gtk::EventController>());
 
     let zoom = gtk::GestureZoom::new();
 
