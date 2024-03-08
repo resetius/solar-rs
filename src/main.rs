@@ -127,7 +127,7 @@ impl Context {
                 Preset{_name: String::from("2 Bodies"), input_file: String::from("2bodies.txt"), method: 1, dt: 0.00005},
                 Preset{_name: String::from("3 Bodies"), input_file: String::from("3bodies.txt"), method: 1, dt: 0.00001},
                 Preset{_name: String::from("Solar"), input_file: String::from("solar.txt"), method: 1, dt: 0.005},
-                Preset{_name: String::from("Saturn"), input_file: String::from("saturn.txt"), method: 1, dt: 0.00001}
+                Preset{_name: String::from("Saturn"), input_file: String::from("saturn.txt"), method: 1, dt: 0.000001}
             ],
             active_preset: 100,
             r: Vec::new(),
@@ -168,12 +168,15 @@ impl Context {
 
     fn start(&mut self) {
         self.stop();
+        let model: gtk::StringList = self.body_selector.upgrade().unwrap().model().unwrap().downcast().unwrap();
+        model.splice(0, self.bodies.len() as u32, &[]);
         self.bodies.clear();
         self.header_processed = false;
         self.suspend = false;
         self.active_body = -1;
         if self.method < 2 {
             self.spawn();
+            self.read_child();
         }
     }
 
@@ -202,7 +205,6 @@ impl Context {
         self.input.replace(input);
         self.line_input.replace(line_input);
         self.cancel_read.replace(gio::Cancellable::new());
-        self.read_child();
     }
 
     fn read_child(&mut self) {
