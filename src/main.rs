@@ -124,10 +124,10 @@ impl Context {
             input_file: String::from("2bodies.txt"),
             //
             presets: vec![
-                Preset{_name: String::from("2 Bodies"), input_file: String::from("2bodies.txt"), method: 0, dt: 0.00005},
-                Preset{_name: String::from("3 Bodies"), input_file: String::from("3bodies.txt"), method: 0, dt: 0.00001},
-                Preset{_name: String::from("Solar"), input_file: String::from("solar.txt"), method: 0, dt: 0.005},
-                Preset{_name: String::from("Saturn"), input_file: String::from("saturn.txt"), method: 0, dt: 0.00001}
+                Preset{_name: String::from("2 Bodies"), input_file: String::from("2bodies.txt"), method: 1, dt: 0.00005},
+                Preset{_name: String::from("3 Bodies"), input_file: String::from("3bodies.txt"), method: 1, dt: 0.00001},
+                Preset{_name: String::from("Solar"), input_file: String::from("solar.txt"), method: 1, dt: 0.005},
+                Preset{_name: String::from("Saturn"), input_file: String::from("saturn.txt"), method: 1, dt: 0.00001}
             ],
             active_preset: 100,
             r: Vec::new(),
