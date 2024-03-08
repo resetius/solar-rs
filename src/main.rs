@@ -66,6 +66,13 @@ impl Body {
     }
 }
 
+struct Preset {
+    _name: String,
+    input_file: String,
+    method: u32,
+    dt: f64
+}
+
 impl SharedFromThis<RefCell<Context>> for Context {
     fn get_base(&self) -> &SharedFromThisBase<RefCell<Context>> {
         &self.base
@@ -75,14 +82,22 @@ impl SharedFromThis<RefCell<Context>> for Context {
 struct Context {
     base: SharedFromThisBase<RefCell<Context>>,
     bodies: Vec<Body>,
-    method: u32,
     active_body: i32,
+    //
+    method: u32,
+    dt: f64,
+    input_file: String,
+    //
+    presets: Vec<Preset>,
+    active_preset: u32,
     // controls
     r: Vec<glib::WeakRef<gtk::Label>>,
     v: Vec<glib::WeakRef<gtk::Label>>,
     body_selector: glib::WeakRef<gtk::DropDown>,
     method_selector: glib::WeakRef<gtk::DropDown>,
+    dt_selector: glib::WeakRef<gtk::SpinButton>,
     drawing_area: glib::WeakRef<gtk::DrawingArea>,
+    entry_buffer: glib::WeakRef<gtk::EntryBuffer>,
     // child process
     subprocess: Option<gio::Subprocess>,
     input: Option<gio::InputStream>,
@@ -94,9 +109,7 @@ struct Context {
     source_id: Option<SourceId>,
     // zoom
     zoom_initial: f64,
-    zoom: f64,
-    //
-    dt: f64
+    zoom: f64
 }
 
 impl Context {
@@ -104,13 +117,26 @@ impl Context {
         let r = Rc::new(RefCell::new(Context{
             base: SharedFromThisBase::new(),
             bodies: Vec::new(),
-            method: 100,
             active_body: -1,
+            //
+            method: 100,
+            dt: 1e-3,
+            input_file: String::from("2bodies.txt"),
+            //
+            presets: vec![
+                Preset{_name: String::from("2 Bodies"), input_file: String::from("2bodies.txt"), method: 0, dt: 0.00005},
+                Preset{_name: String::from("3 Bodies"), input_file: String::from("3bodies.txt"), method: 0, dt: 0.00001},
+                Preset{_name: String::from("Solar"), input_file: String::from("solar.txt"), method: 0, dt: 0.005},
+                Preset{_name: String::from("Saturn"), input_file: String::from("saturn.txt"), method: 0, dt: 0.00001}
+            ],
+            active_preset: 100,
             r: Vec::new(),
             v: Vec::new(),
             body_selector: glib::WeakRef::new(),
             method_selector: glib::WeakRef::new(),
+            dt_selector: glib::WeakRef::new(),
             drawing_area: glib::WeakRef::new(),
+            entry_buffer: glib::WeakRef::new(),
             //
             subprocess: None,
             input: None,
@@ -122,9 +148,7 @@ impl Context {
             source_id: None,
             //
             zoom_initial: 0.1,
-            zoom: 0.1,
-            //
-            dt: 1e-3
+            zoom: 0.1
         }));
         r.borrow_mut().base.initialise(&r);
         r
@@ -148,7 +172,9 @@ impl Context {
         self.header_processed = false;
         self.suspend = false;
         self.active_body = -1;
-        self.spawn();
+        if self.method < 2 {
+            self.spawn();
+        }
     }
 
     fn spawn(&mut self) {
@@ -163,7 +189,7 @@ impl Context {
         let argv = [
             path.as_os_str(),
             OsStr::new("--input"),
-            OsStr::new("solar.txt"),
+            OsStr::new(&self.input_file),
             OsStr::new("--dt"),
             OsStr::new(&dt),
             OsStr::new("--T"),
@@ -268,6 +294,17 @@ impl Context {
 
     fn preset_changed(&mut self, selector: &gtk::DropDown) {
         let active = selector.selected();
+        if active != self.active_preset {
+            self.active_preset = active;
+            let preset = &self.presets[self.active_preset as usize];
+            self.method = preset.method;
+            self.dt = preset.dt;
+            self.input_file = preset.input_file.clone();
+            self.method_selector.upgrade().map(|x| x.set_selected(preset.method));
+            self.dt_selector.upgrade().map(|x| x.set_value(preset.dt));
+            self.entry_buffer.upgrade().map(|x| x.set_text(&preset.input_file));
+            self.start();
+        }
     }
 
     fn draw(&mut self, _area: &gtk::DrawingArea, cr: &gtk::cairo::Context, w: i32, h: i32) {
@@ -390,6 +427,15 @@ impl Context {
         }
     }
 
+    fn input_file_changed(&mut self, entry: &gtk::Entry) {
+        let buffer = entry.buffer();
+        let text = buffer.text();
+        if text != self.input_file {
+            self.input_file = String::from(text);
+            self.start();
+        }
+    }
+
     fn close(&mut self) {
         self.source_id.take().map(|source_id| source_id.remove());
         self.stop();
@@ -404,30 +450,35 @@ fn control_widget(ctx: &Rc<RefCell<Context>>) -> gtk::Widget {
     bx.append(&gtk::Label::new(Some("Preset:")));
     let presets = ["2 Bodies", "3 Bodies", "Solar", "Saturn"];
     let preset_selector = gtk::DropDown::from_strings(&presets);
-    preset_selector.connect_state_flags_changed(clone!(@strong ctx => move |a, _| { ctx.borrow_mut().preset_changed(a); } ));
+    preset_selector.connect_state_flags_changed(clone!(@strong ctx => move |a, _| ctx.borrow_mut().preset_changed(a) ));
     bx.append(&preset_selector);
 
     let methods = ["Euler", "Verlet"];
     bx.append(&gtk::Label::new(Some("Method:")));
     let method_selector = gtk::DropDown::from_strings(&methods);
-    method_selector.connect_state_flags_changed(clone!(@strong ctx => move |a, _| { ctx.borrow_mut().method_changed(a); } ));
+    method_selector.connect_state_flags_changed(clone!(@strong ctx => move |a, _| ctx.borrow_mut().method_changed(a) ));
     bx.append(&method_selector);
     bx.append(&gtk::Label::new(Some("Input:")));
     let entry = gtk::Entry::new();
-    // TODO signal
-    // TODO store buffer
     let buffer = entry.buffer();
-    // buffer.set_text() // TODO
+    buffer.set_text(&ctx.borrow().input_file);
+    entry.connect_activate(clone!(@strong ctx => move |x| ctx.borrow_mut().input_file_changed(x)));
     bx.append(&entry);
     bx.append(&gtk::Label::new(Some("dt:")));
-    // TODO store dt
     let dt = gtk::SpinButton::with_range(1e-14, 0.1, 0.00001);
     dt.set_digits(8);
     dt.set_value(ctx.borrow().dt);
-    dt.connect_value_changed(clone!(@strong ctx => move |x| ctx.borrow_mut().dt_changed(x)));
+    dt.connect_value_changed(clone!(@strong ctx => move |x| {
+        match ctx.try_borrow_mut() {
+            Ok(mut a) => a.dt_changed(x),
+            _ => ()
+        }
+    }));
     bx.append(&dt);
 
     ctx.borrow_mut().method_selector.set(Some(&method_selector.into()));
+    ctx.borrow_mut().dt_selector.set(Some(&dt));
+    ctx.borrow_mut().entry_buffer.set(Some(&buffer));
 
     frame.into()
 }
