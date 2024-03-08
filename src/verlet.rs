@@ -241,7 +241,7 @@ fn run_test() {
                 a_next : [0.0, 0.0, 0.0],
                 min_rad : -1.0,
                 max_rad : -1.0,
-                rad : -1.0,
+                rad : 1.0,
                 m : m,
                 fixed : fixed
             });
