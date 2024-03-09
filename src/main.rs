@@ -309,6 +309,11 @@ impl Context {
         }
     }
 
+    fn active_changed(&mut self, selector: &gtk::DropDown) {
+        let active = selector.selected();
+        self.active_body = active as i32;
+    }
+
     fn draw(&mut self, _area: &gtk::DrawingArea, cr: &gtk::cairo::Context, w: i32, h: i32) {
         let bodies = &mut self.bodies;
         let zoom = self.zoom;
@@ -493,8 +498,7 @@ fn info_widget(ctx: &Rc<RefCell<Context>>) -> gtk::Widget {
     let strings = [];
     let body_selector = gtk::DropDown::from_strings(&strings);
     body_selector.set_selected(0);
-    // signal
-
+    body_selector.connect_state_flags_changed(clone!(@strong ctx => move |a, _| ctx.borrow_mut().active_changed(a) ));
     bx.append(&body_selector);
 
     for _i in 0..3 {
@@ -567,12 +571,6 @@ fn on_activate(application: &gtk::Application, ctx: &Rc<RefCell<Context>>) {
     zoom.connect_scale_changed(clone!(@strong ctx => move |a, b| ctx.borrow_mut().zoom_scale_changed(a, b)));
     zoom.set_propagation_phase(gtk::PropagationPhase::Capture);
     drawing_area.add_controller(zoom.upcast::<gtk::EventController>());
-
-    // … with a button in it …
-    //let button = gtk::Button::with_label("Hello World!");
-    // … which closes the window when clicked
-    //button.connect_clicked(clone!(@weak window => move |_| window.close()));
-    //window.set_child(Some(&button));
 
     window.connect_destroy(clone!(@strong ctx => move |_| ctx.borrow_mut().close()));
 
